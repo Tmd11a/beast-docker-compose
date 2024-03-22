@@ -1,0 +1,149 @@
+version: '3.3'
+services:
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    user: ${PUID}
+    environment:
+      - GF_SECURITY_ADMIN_USER=${NAME}
+      - GF_SECURITY_ADMIN_PASSWORD=${PASS}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - /opt/appdata/grafana:/var/lib/grafana
+    ports:
+      - 3000:3000 
+    restart: always
+
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: wireguard
+    environment:
+      - VPN_SERVICE_PROVIDER=surfshark
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WG_PR_KEY}
+      - WIREGUARD_ADDRESSES=10.14.0.2/16
+      - SERVER_HOSTNAMES=us-slc.prod.surfshark.com
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "0.0.0.0:9091:9091/tcp"   # <-- ports go here, not below
+      - 51413:51413/tcp
+      - 51413:51413/udp
+    restart: always
+  
+  transmission:
+    image: linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+        - '/storage/torrent/:/downloads'
+        - '/opt/appdata/torrent:/config'
+    network_mode: "service:gluetun"  # <-- important bit, don't forget
+    restart: unless-stopped
+ 
+  plex:
+    image: linuxserver/plex:latest
+    container_name: plex
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - VERSION=docker
+      - UMASK_SET=002
+      - PLEX_CLAIM=${CLAIM}
+    network_mode: host
+    devices:
+      - /dev/dri:/dev/dri
+    volumes:
+      - /opt/appdata/plex:/config
+      - /storage:/media
+      - /tmp/ramdisk:/transcode
+    restart: unless-stopped
+
+
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK_SET=002
+    volumes:
+      - /opt/appdata/radarr:/config
+      - /storage/torrent/:/downloads
+      - /storage/:/media
+    ports:
+      - 7878:7878
+    expose:
+      - "7878"
+    restart: unless-stopped
+
+
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK_SET=002
+    volumes:
+      - /opt/appdata/sonarr/:/config
+      - /storage/torrent/:/downloads
+      - /storage/:/media
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+
+  jackett:
+    image: linuxserver/jackett
+    container_name: jackett
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - AUTO_UPDATE=true  
+    volumes:
+      - /opt/appdata/jackett/:/config
+      - /storage/torrent/:/downloads
+    ports:
+      - 9117:9117
+    restart: unless-stopped
+
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    volumes:
+      - /opt/appdata/portainer/:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 9000:9000
+    restart: always
+
+#----------------- Game servers ----------------- #
+  minecraft:
+      image: itzg/minecraft-server:latest
+      container_name: minecraft
+      environment:
+        - MAX_MEMORY=8G
+        - INIT_MEMORY=1G
+        - TZ=${TZ}
+        - VERSION=LATEST
+        - ICON='https://pbs.twimg.com/profile_images/1022087318084177920/bM1L0HOM.jpg'
+        - VIRTUAL_HOST=mc.tmdba.duckdns.org
+        - EULA=true
+      volumes:
+        - /opt/appdata/minecraft:/data
+      ports:
+        - 25565:25565
+      expose:
+      - "25565"
+      tty: "true"
+      stdin_open: "true"
+      restart: always
